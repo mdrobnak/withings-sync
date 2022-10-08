@@ -13,6 +13,7 @@ from withings_sync.garmin import GarminConnect
 from withings_sync.trainerroad import TrainerRoad
 from withings_sync.fit import FitEncoder_Weight
 from withings_sync.fitbit import FitbitData
+from withings_sync.eufy import EufyData
 
 
 try:
@@ -133,8 +134,8 @@ def get_args():
     )
     parser.add_argument(
         "--data-source",
-        choices=['fitbit'],
-        help=("Data source can be fitbit only."),
+        choices=['fitbit', 'eufy'],
+        help=("Data source can be fitbit or eufy.")
     )
 
     parser.add_argument("--verbose", "-v", action="store_true", help="Run verbosely")
@@ -359,8 +360,12 @@ def sync():
         fitbit = FitbitData()
         height = 1.77 # FIXME
         groups = fitbit.get_measurements(startdate=startdate, enddate=enddate)
+    elif ARGS.data_source == "eufy":
+        eufy = EufyData()
+        height = 1.77 # FIXME
+        groups = eufy.get_measurements(startdate=startdate, enddate=enddate)
     else:
-        logging.error("If importing data, --data-source must be set to fitbit")
+        logging.error("If importing data, --data-source must be set to fitbit or eufy")
         return -1
 
     # Only upload if there are measurement returned
