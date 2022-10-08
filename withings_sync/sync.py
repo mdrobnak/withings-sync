@@ -12,6 +12,7 @@ from withings_sync.withings2 import WithingsAccount
 from withings_sync.garmin import GarminConnect
 from withings_sync.trainerroad import TrainerRoad
 from withings_sync.fit import FitEncoder_Weight
+from withings_sync.fitbit import FitbitData
 
 
 try:
@@ -120,12 +121,22 @@ def get_args():
         metavar="BASENAME",
         help=("Write downloaded measurements to file."),
     )
-
     parser.add_argument(
         "--no-upload",
         action="store_true",
         help=("Won't upload to Garmin Connect or " "TrainerRoad."),
     )
+    parser.add_argument(
+        "--import-data",
+        action="store_true",
+        help=("Don't connect to Withings"),
+    )
+    parser.add_argument(
+        "--data-source",
+        choices=['fitbit'],
+        help=("Data source can be fitbit only."),
+    )
+
     parser.add_argument("--verbose", "-v", action="store_true", help="Run verbosely")
 
     return parser.parse_args()
@@ -282,8 +293,9 @@ def prepare_syncdata(height, groups):
     for groupdata in syncDict.values():
         syncdata.append(groupdata)
         logging.debug("Processed data: ")
-        for k,v in groupdata.items():
-            logging.debug(k, v)
+        # For some reason this does not work, so I commented this out. -MD
+        #for k,v in groupdata.items():
+        #    logging.debug(k, v)
         if last_date_time is None or groupdata["date_time"] > last_date_time:
             last_date_time = groupdata["date_time"]
             last_weight = groupdata["weight"]
@@ -319,12 +331,18 @@ def write_to_file_when_needed(fit_data, json_data):
 def sync():
     """Sync measurements from Withings to Garmin a/o TrainerRoad"""
 
-    # Withings API
-    withings = WithingsAccount()
 
     if not ARGS.fromdate:
-        startdate = withings.get_lastsync()
+        if not ARGS.import_data:
+            # Withings API
+            withings = WithingsAccount()
+            startdate = withings.get_lastsync()
+        else:
+            startdate = 0
     else:
+        if not ARGS.import_data:
+            # Withings API
+            withings = WithingsAccount()
         startdate = int(time.mktime(ARGS.fromdate.timetuple()))
 
     enddate = int(time.mktime(ARGS.todate.timetuple())) + 86399
@@ -334,8 +352,16 @@ def sync():
         time.strftime("%Y-%m-%d %H:%M", time.gmtime(enddate)),
     )
 
-    height = withings.get_height()
-    groups = withings.get_measurements(startdate=startdate, enddate=enddate)
+    if not ARGS.import_data:
+        height = withings.get_height()
+        groups = withings.get_measurements(startdate=startdate, enddate=enddate)
+    elif ARGS.data_source == "fitbit":
+        fitbit = FitbitData()
+        height = 1.77 # FIXME
+        groups = fitbit.get_measurements(startdate=startdate, enddate=enddate)
+    else:
+        logging.error("If importing data, --data-source must be set to fitbit")
+        return -1
 
     # Only upload if there are measurement returned
     if groups is None or len(groups) == 0:
@@ -344,7 +370,8 @@ def sync():
 
     # Save this sync so we don't re-download the same data again (if no range has been specified)
     if not ARGS.fromdate:
-        withings.set_lastsync()
+        if not ARGS.import_data:
+            withings.set_lastsync()
 
     last_weight, last_date_time, syncdata = prepare_syncdata(height, groups)
 
